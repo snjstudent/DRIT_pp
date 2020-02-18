@@ -21,13 +21,12 @@ class ProcessImage:
         image_A = [cv2.imread(i) for i in dom_A]
         image_B = [cv2.imread(i) for i in dom_B]
         image_A = image_B[0:len(image_B)]
-        image_A = [cv2.resize(i,(256, 256))/255 for i in image_A]
-        image_B = [cv2.resize(i,(256,256))/255 for i in image_B]
+        image_A = [cv2.resize(i,(216, 216))/255 for i in image_A]
+        image_B = [cv2.resize(i,(216,216))/255 for i in image_B]
         return np.array([image_A],dtype=np.float32), np.array([image_B],dtype=np.float32)
 
 class ConvBlock(Model):
-    def __init__(self, filter_num: int, kernel_size: int = 3, stride: int = 1, padding_num: int = 0, do_padding=False, do_frac=False, do_leakyr=False, do_norm=True, do_relu=True, *args, **kwargs):
-        
+    def __init__(self, filter_num: int, kernel_size: int = 3, stride: int = 1, padding_num: int = 0, output_padding: int = 1, do_padding=False, do_frac=False, do_leakyr=False, do_norm=True, do_relu=True, padding='same', *args, **kwargs):  
         super(ConvBlock, self).__init__(*args, **kwargs)
         self.filter_num = filter_num
         self.kernel_size = kernel_size
@@ -39,9 +38,9 @@ class ConvBlock(Model):
         self.do_norm = do_norm
         self.do_relu = do_relu
         if self.do_frac:
-            self.conv = Conv2DTranspose(filters=self.filter_num, kernel_size=self.kernel_size, strides=int(self.stride ** (-1)),padding='same')
+            self.conv = Conv2DTranspose(filters=self.filter_num, kernel_size=self.kernel_size, strides=int(self.stride ** (-1)),padding='same',output_padding=output_padding)
         else:
-            self.conv = Conv2D(filters=self.filter_num, kernel_size=self.kernel_size, strides=self.stride,padding='same')
+            self.conv = Conv2D(filters=self.filter_num, kernel_size=self.kernel_size, strides=self.stride, padding=padding)
         self.norm=tfa.layers.InstanceNormalization(axis=3, 
                                                center=True, 
                                                scale=True,
