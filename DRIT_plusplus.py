@@ -12,7 +12,7 @@ import numpy as np
 import random
 import sys
 from common import ProcessImage, ConvBlock, ResNN
-batch_size = 1
+batch_size = 4
 
 class Generator_block_1(Model):
     def __init__(self, filter_num, dropout_rate: float = 0.0, *args, **kwargs):
@@ -26,8 +26,12 @@ class Generator_block_1(Model):
         self.dropout = Dropout(rate=dropout_rate)
     
     def call(self, input_, z):
-        z = tf.reshape(z, [-1, 1, 1, z.shape[3]])
-        z_expand = tf.tile(z, [-1, input_.shape[1], input_.shape[2], 1])
+        if z.shape[0] == None:
+            z = tf.reshape(z, [-1, 1, 1, z.shape[3]])
+            z_expand = tf.tile(z, [-1, input_.shape[1], input_.shape[2], 1])
+        else:
+            z = tf.reshape(z, [z.shape[0], 1, 1, z.shape[3]])
+            z_expand = tf.tile(z, [1, input_.shape[1], input_.shape[2], 1])
         out = self.conv_1(input_)
         out = self.conv_2(tf.concat([out, z_expand], -1))
         out = self.conv_2_1(out)
@@ -66,8 +70,9 @@ class Generator(Model):
             filter_num = int(filter_num / 2)
             self.block_2 += [Generator_block_2(filter_num=filter_num)]
         self.conv = Conv2DTranspose(filters=3, kernel_size=1, strides=1, padding='valid')
-        self.tanh = Activation(activation=tf.nn.tanh)
+        #self.tanh = Activation(activation=tf.nn.tanh)
         self.block_3 = Generator_block_3()
+        self.tanh = Dense(3, activation='tanh')
 
     def call(self, z, input_):
         z_out = self.block_3(z)
@@ -117,7 +122,6 @@ class Encoder_Block_c(Model):
 
         self.dropout = Dropout(rate=self.dropout_rate)
         #LeakyReLUConv2d
-        #zeropaddingを3個つけるのはtensorflowのcon2dでは無理っぽい
         self.conv_1 = ConvBlock(self.filter_num, kernel_size=7, stride=1, padding_num=3, do_leakyr=True, do_padding=True,padding='valid')
 
         #ReLuINSConv2d
@@ -234,8 +238,12 @@ class Lossfunc:
         loss_2 = tf.reduce_mean(loss_2, axis=[1, 2])
         return loss_2
     
-    def mode_seeking(self, y_true, y_pred): 
+    def mode_seeking(self, y_true, y_pred):
+        loss_2 = tfk.losses.mae(y_true, y_pred)
         return y_pred
+    
+    def encoder_content(self, y_true, y_pred):
+        return 0.0
         
 
 class DRIT_pp:
@@ -276,7 +284,8 @@ class DRIT_pp:
         self.modeseek_2 = self.forseek([self.e_attr_A_1, self.e_attr_B_1, self.genA, self.gen_B_selfconst])
         model_EG = Model(inputs=[self.input_A, self.input_B],
         outputs=[
-        self.disA, self.disB, self.e_c_A, self.e_c_B,
+        self.disA, self.disB,
+        self.e_c_A, self.e_c_B,
         self.modeseek_1,
         self.modeseek_2,
         self.gen_A_selfconst,self.gen_B_selfconst,
@@ -289,7 +298,9 @@ class DRIT_pp:
             optimizer=tfk.optimizers.Adam(lr=0.0002),
             loss={
             'discriminator_content': lossfunc.content_adversarial_eg,
-            'discriminator_content_1':lossfunc.content_adversarial_eg,
+            'discriminator_content_1': lossfunc.content_adversarial_eg,
+            'encoder_content': lossfunc.encoder_content,
+            'encoder_content_1':lossfunc.encoder_content,
             'for_seeking':lossfunc.mode_seeking,
             'for_seeking_1': lossfunc.mode_seeking,
             'generator':lossfunc.self_reconstruction,
@@ -298,6 +309,20 @@ class DRIT_pp:
             'generator_1_1':lossfunc.cross_cycle_consistensy,
             'discriminator': lossfunc.domain_adversarial_eg,
             'discriminator_1': lossfunc.domain_adversarial_eg
+            },
+            loss_weights={
+            'discriminator_content': 1.0,
+            'discriminator_content_1': 1.0,
+            'encoder_content': 0.0,
+            'encoder_content_1':0.0,
+            'for_seeking':5.0,
+            'for_seeking_1': 5.0,
+            'generator':10.0,
+            'generator_1':10.0,
+            'generator_2': 10.0,
+            'generator_1_1':10.0,
+            'discriminator': 1.0,
+            'discriminator_1':1.0
             }
         )
         model_D_c_A = Sequential(
@@ -315,25 +340,25 @@ class DRIT_pp:
         model_D_c_A.compile(
             optimizer=tfk.optimizers.Adam(lr=0.0002),
             loss={
-            'discriminator_content': lossfunc.content_adversarial
+            'output_1': lossfunc.content_adversarial
             }
         )
         model_D_c_B.compile(
             optimizer=tfk.optimizers.Adam(lr=0.002),
             loss={
-                'discriminator_content':lossfunc.content_adversarial
+                'output_1':lossfunc.content_adversarial
             }
         )
         model_D_a_A.compile(
             optimizer=tfk.optimizers.Adam(lr=0.002),
             loss={
-                'discriminator':lossfunc.domain_adversarial
+                'output_1':lossfunc.domain_adversarial
             }
         )
         model_D_a_B.compile(
             optimizer=tfk.optimizers.Adam(lr=0.002),
             loss={
-                'discriminator':lossfunc.domain_adversarial
+                'output_1':lossfunc.domain_adversarial
             }
         )
             
